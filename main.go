@@ -145,7 +145,7 @@ func insert(bilibili Models.Bilibili) sql.Result {
 }
 
 func findLastRecord() Models.Bilibili {
-	sql := "select * from bilibili order by id desc limit 1"
+	sql := "select * from bilibili order by aid desc limit 1"
 	db := GetDB()
 	defer db.Close()
 	record := Models.Bilibili{}
