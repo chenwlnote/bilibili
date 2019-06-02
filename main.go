@@ -36,27 +36,44 @@ func CheckErr(err error) {
 func main() {
 
 	isOk := make(chan bool, 1)
-	var minAid, maxAid int
+	var minAid, maxAid, chooseType int
 	fmt.Println("请输入minAid:")
 	fmt.Scanln(&minAid)
 	fmt.Println("请输入maxAid:")
 	fmt.Scanln(&maxAid)
-	lastRecord := findLastRecord()
+	//lastRecord := findLastRecord()
 	fmt.Printf("当前输入开始aid:%d;结束aid:%d \n", minAid, maxAid)
-	if lastRecord.Aid > minAid {
-		minAid = lastRecord.Aid + 1
-		if lastRecord.Aid > maxAid {
-			maxAid = lastRecord.Aid + 1
-		}
-		if minAid > maxAid {
-			fmt.Printf("数据自动纠正minAid:%d,maxAid:%d \n", minAid, maxAid)
+
+	chooseType = 0
+	for chooseType == 0 {
+		fmt.Println("请选择操作方式：【1】->采集视频，【2】->更新标签")
+		fmt.Scanln(&chooseType)
+		if chooseType == 1 || chooseType == 2 {
+			break
 		} else {
-			fmt.Printf("数据纠正后：开始aid:%d;结束aid:%d \n", minAid, maxAid)
+			chooseType = 0
 		}
 	}
+
+	//if lastRecord.Aid > minAid {
+	//	minAid = lastRecord.Aid + 1
+	//	if lastRecord.Aid > maxAid {
+	//		maxAid = lastRecord.Aid + 1
+	//	}
+	//	if minAid > maxAid {
+	//		fmt.Printf("数据自动纠正minAid:%d,maxAid:%d \n", minAid, maxAid)
+	//	} else {
+	//		fmt.Printf("数据纠正后：开始aid:%d;结束aid:%d \n", minAid, maxAid)
+	//	}
+	//}
 	rc := make(chan bool, maxAid-minAid+1)
 	for i := minAid; i <= maxAid; i++ {
-		go rsyncVideoInfo(i, isOk, maxAid, rc)
+		if chooseType == 1 {
+			go rsyncVideoInfo(i, isOk, maxAid, rc)
+		} else {
+			go rsyncVideoTag(i, isOk, maxAid, rc)
+		}
+
 		<-rc
 		//if !<-isOk {
 		//	break
@@ -244,24 +261,46 @@ func getVideoInfo(aid int) HttpResponse.VideoInfoResponse {
 
 }
 
-func getVideoTagInfoStrByAid(aid int) string {
+func rsyncVideoTag(aid int, isOk chan bool, maxAid int, rc chan bool) {
 	str := ""
-	videoTagInfoResponse := make(chan HttpResponse.VideoTagInfoResponse, 1)
-	getVideoTagInfo(aid, videoTagInfoResponse)
-	videoTagInfo := <-videoTagInfoResponse
-	for i := 0; i < len(videoTagInfo.Data.TagDetail); i++ {
-		str += videoTagInfo.Data.TagDetail[i].TagName + ","
+	record := findByAid(aid)
+	if record.Aid > 0 {
+		fmt.Println("准备获取视频标签：" + strconv.Itoa(aid))
+		videoTagInfo := getVideoTagInfo(aid)
+		for i := 0; i < len(videoTagInfo.Data); i++ {
+			str += videoTagInfo.Data[i].TagName + ","
+		}
+		str = string(str[0 : len(str)-1])
+		fmt.Println(strconv.Itoa(aid) + ":视频标签为：" + str)
+		record.Keywords = str
+		fmt.Println(strconv.Itoa(aid) + "：准备同步标签：" + str)
+		updateVideoTagByAid(aid, &record)
+		fmt.Println(strconv.Itoa(aid) + ":同步完成：" + str)
 	}
-	return str
-
+	rc <- true
+	if aid >= maxAid {
+		isOk <- false
+	} else {
+		isOk <- true
+	}
 }
 
-func getVideoTagInfo(aid int, videoTagInfoResponse chan HttpResponse.VideoTagInfoResponse) HttpResponse.VideoTagInfoResponse {
+func updateVideoTagByAid(aid int, bilibili *Models.Bilibili) sql.Result {
+	sql := "update bilibili set keywords='" + bilibili.Keywords + "' where aid=?"
+	fmt.Println(sql)
+	db := GetDB()
+	defer db.Close()
+	result, _ := db.Exec(sql, strconv.Itoa(aid))
+	return result
+}
 
-	time.Sleep(time.Duration(1000))
+func getVideoTagInfo(aid int) HttpResponse.VideoTagInfoResponse {
+
+	url := "https://api.bilibili.com/x/tag/archive/tags?aid=" + strconv.Itoa(aid)
+	time.Sleep(time.Duration(10))
 
 	client := http.Client{}
-	url := "https://api.bilibili.com/x/tag/archive/tags?aid=" + strconv.Itoa(aid)
+
 	request, err := http.NewRequest("GET", url, nil)
 
 	//增加header选项
@@ -278,6 +317,6 @@ func getVideoTagInfo(aid int, videoTagInfoResponse chan HttpResponse.VideoTagInf
 	body, _ := ioutil.ReadAll(response.Body)
 	result := HttpResponse.VideoTagInfoResponse{}
 	json.Unmarshal(body, &result)
-	videoTagInfoResponse <- result
 	return result
+
 }

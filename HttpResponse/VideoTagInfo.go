@@ -1,17 +1,13 @@
 package HttpResponse
 
 type VideoTagInfoResponse struct {
-	Code    int                      `json:"code"`
-	Message string                   `json:"message"`
-	Ttl     int                      `json:"ttl"`
-	Data    VideoTagInfoResponseData `json:"data"`
+	Code    int                        `json:"code"`
+	Message string                     `json:"message"`
+	Ttl     int                        `json:"ttl"`
+	Data    []VideoTagInfoResponseData `json:"data"`
 }
 
 type VideoTagInfoResponseData struct {
-	TagDetail []VideoTagDetail `json:"tag_detail"`
-}
-
-type VideoTagDetail struct {
 	TagId       int                 `json:"tag_id"`
 	TagName     string              `json:"tag_name"`
 	Cover       string              `json:"cover"`
