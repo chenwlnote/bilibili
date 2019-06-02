@@ -10,7 +10,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"strconv"
-	"sync"
 	"time"
 )
 
@@ -35,45 +34,64 @@ func CheckErr(err error) {
 }
 
 func main() {
-	isOk := make(chan bool, 1)
-	wg := sync.WaitGroup{}
-	for i := 1; i <= 10000; i++ {
-		wg.Add(1)
-		go rsyncVideoInfo(i, isOk, &wg)
-	}
 
-	wg.Wait()
+	isOk := make(chan bool, 1)
+	var minAid, maxAid int
+	fmt.Println("请输入minAid:")
+	fmt.Scanln(&minAid)
+	fmt.Println("请输入maxAid:")
+	fmt.Scanln(&maxAid)
+	lastRecord := findLastRecord()
+	fmt.Printf("当前输入开始aid:%d;结束aid:%d \n", minAid, maxAid)
+	if lastRecord.Aid > minAid {
+		minAid = lastRecord.Aid + 1
+		maxAid = lastRecord.Aid + 1
+		if minAid > maxAid {
+			fmt.Printf("数据自动纠正minAid:%d,maxAid:%d \n", minAid, maxAid)
+		} else {
+			fmt.Printf("数据纠正后：开始aid:%d;结束aid:%d \n", minAid, maxAid)
+		}
+	}
+	rc := make(chan bool, maxAid-minAid+1)
+	for i := minAid; i <= maxAid; i++ {
+		go rsyncVideoInfo(i, isOk, maxAid, rc)
+		<-rc
+		//if !<-isOk {
+		//	break
+		//}
+	}
 	fmt.Println("操作完成")
 
 }
 
-func rsyncVideoInfo(aid int, isOk chan bool, wg *sync.WaitGroup) {
+func rsyncVideoInfo(aid int, isOk chan bool, maxAid int, rc chan bool) {
 
-	videoInfoResponse := make(chan HttpResponse.VideoInfoResponse, 1)
-	getVideoInfo(aid, videoInfoResponse)
+	record := findByAid(aid)
+	if record.Aid == 0 {
+		res := getVideoInfo(aid)
 
-	res := <-videoInfoResponse
-
-	if res.Code == 0 && res.Data.Aid > 0 {
-		record := findByAid(res.Data.Aid)
-		if record.Aid == 0 {
+		if res.Code == 0 && res.Data.Aid > 0 {
 			result := transformVideoInfoToModels(res.Data)
-			result.Keywords = getVideoTagInfoStrByAid(aid)
 			insert(result)
-		}
-		defer wg.Done()
-		isOk <- true
-		fmt.Println(strconv.Itoa(aid) + ":数据导入完成！")
-	} else {
-		defer wg.Done()
-		if res.Code == 0 {
-			fmt.Println(strconv.Itoa(aid) + ":请求失败，IP被封！")
+			rc <- true
+			isOk <- true
+			fmt.Println(strconv.Itoa(aid) + ":数据导入完成！")
 		} else {
-			fmt.Println(strconv.Itoa(aid) + ":" + res.Message)
+			rc <- false
+			if res.Code == 0 {
+				isOk <- false
+				fmt.Println(strconv.Itoa(aid) + ":请求失败，IP被封！")
+			} else {
+				fmt.Println(strconv.Itoa(aid) + ":" + res.Message)
+			}
 		}
+	} else {
+		rc <- true
+		isOk <- true
+		fmt.Println(strconv.Itoa(record.Aid) + ":【" + record.Title + "】已导入！")
 	}
 
-	if aid > 60000000 {
+	if aid >= maxAid {
 		fmt.Println(strconv.Itoa(aid) + ":范围溢出！")
 		isOk <- false
 	}
@@ -126,6 +144,38 @@ func insert(bilibili Models.Bilibili) sql.Result {
 	return result
 }
 
+func findLastRecord() Models.Bilibili {
+	sql := "select * from bilibili order by id desc limit 1"
+	db := GetDB()
+	defer db.Close()
+	record := Models.Bilibili{}
+	db.QueryRow(sql).Scan(
+		&record.Id,
+		&record.Aid,
+		&record.Title,
+		&record.Url,
+		&record.Duration,
+		&record.View,
+		&record.Danmaku,
+		&record.Reply,
+		&record.Favorite,
+		&record.Coin,
+		&record.Share,
+		&record.Like,
+		&record.NowRank,
+		&record.HisRank,
+		&record.Keywords,
+		&record.ActionTag,
+		&record.EmotionTag,
+		&record.SceneTag,
+		&record.StarTag,
+		&record.DialogTag,
+		&record.UpdateCount,
+		&record.UpdatedAt,
+		&record.CreatedAt)
+	return record
+}
+
 /**
  *
  */
@@ -161,11 +211,11 @@ func findByAid(aid int) Models.Bilibili {
 	return record
 }
 
-func getVideoInfo(aid int, videoInfoResponse chan HttpResponse.VideoInfoResponse) {
+func getVideoInfo(aid int) HttpResponse.VideoInfoResponse {
 
 	requestUrl := "https://api.bilibili.com/x/web-interface/view?aid=" + strconv.Itoa(aid)
 	println("准备采集数据：" + requestUrl)
-	time.Sleep(time.Duration(1000))
+	time.Sleep(time.Duration(10))
 
 	client := http.Client{}
 
@@ -187,8 +237,8 @@ func getVideoInfo(aid int, videoInfoResponse chan HttpResponse.VideoInfoResponse
 	result := HttpResponse.VideoInfoResponse{}
 	json.Unmarshal(body, &result)
 
-	println("数据采集完成！")
-	videoInfoResponse <- result
+	println("数据采集完成！" + result.Data.Title)
+	return result
 
 }
 
