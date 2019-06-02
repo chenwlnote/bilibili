@@ -14,10 +14,10 @@ import (
 )
 
 var (
-	dbhost     = "127.0.0.1:3306"
-	dbusername = "root"
-	dbpassword = "root"
-	dbname     = "bilibili"
+	dbhost     = "test.xiaotuiai.xyz:3306"
+	dbusername = "jiahe"
+	dbpassword = "jiahe1q2w3e4r"
+	dbname     = "scripts"
 )
 
 /*
