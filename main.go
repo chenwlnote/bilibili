@@ -270,7 +270,9 @@ func rsyncVideoTag(aid int, isOk chan bool, maxAid int, rc chan bool) {
 		for i := 0; i < len(videoTagInfo.Data); i++ {
 			str += videoTagInfo.Data[i].TagName + ","
 		}
-		str = string(str[0 : len(str)-1])
+		if len(str) > 0 {
+			str = string(str[0 : len(str)-1])
+		}
 		fmt.Println(strconv.Itoa(aid) + ":视频标签为：" + str)
 		record.Keywords = str
 		fmt.Println(strconv.Itoa(aid) + "：准备同步标签：" + str)
