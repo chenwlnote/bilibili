@@ -45,7 +45,9 @@ func main() {
 	fmt.Printf("当前输入开始aid:%d;结束aid:%d \n", minAid, maxAid)
 	if lastRecord.Aid > minAid {
 		minAid = lastRecord.Aid + 1
-		maxAid = lastRecord.Aid + 1
+		if lastRecord.Aid > maxAid {
+			maxAid = lastRecord.Aid + 1
+		}
 		if minAid > maxAid {
 			fmt.Printf("数据自动纠正minAid:%d,maxAid:%d \n", minAid, maxAid)
 		} else {
